@@ -49,10 +49,7 @@ async function translatePrompt(userPrompt: string): Promise<string> {
   return userPrompt;
 }
 
-function buildPrompt(translatedPrompt: string, style?: string) {
-  const styleSuffix =
-    style && STYLE_ENHANCERS[style] ? ` ${STYLE_ENHANCERS[style]}` : "";
-
+function buildApepePrompt(translatedPrompt: string, styleSuffix: string) {
   return [
     "You are given a reference image of a specific established character named APEPE. Treat this reference image as the single source of truth for what APEPE looks like.",
     "Your task: redraw THIS SAME character (do not invent a new character) performing the requested scene.",
@@ -78,11 +75,62 @@ function buildPrompt(translatedPrompt: string, style?: string) {
   ].join(" ");
 }
 
+function buildGenericPrompt(translatedPrompt: string, styleSuffix: string) {
+  return [
+    "You are given one or more reference images of a specific established cartoon mascot character. Treat these reference images as the single source of truth for what the character looks like.",
+    "Your task: redraw THIS SAME character (do not invent a different character) in the requested scene.",
+    "The reference is the top priority. Even if the text request is short or vague, the character in your output must look essentially identical to the reference — same face, same body shape, same colors, same proportions, same art style and texture.",
+    "",
+    "Preserve from the reference (these define the character and must stay consistent): the overall body and head shape, the color palette, the key facial features, the materials/texture, and the clean illustrated cartoon art style.",
+    "",
+    "You MAY freely change: facial expression (happy, angry, sad, surprised, etc.), pose, action, accessories, outfit details, background, and overall scene — as long as the character stays clearly recognizable as the same one in the reference.",
+    "",
+    "ABSOLUTE RULE — NO text, letters, words, captions, or writing anywhere in the image.",
+    "",
+    `Scene: ${translatedPrompt}.${styleSuffix}`,
+    "",
+    "The result must look like the same character from the reference — same face, same colors, same art style and texture. No text. 1:1 square, high quality.",
+  ].join(" ");
+}
+
+function buildPrompt(
+  translatedPrompt: string,
+  style?: string,
+  project = "apepe",
+  isEdit = false,
+) {
+  const styleSuffix =
+    style && STYLE_ENHANCERS[style] ? ` ${STYLE_ENHANCERS[style]}` : "";
+
+  if (isEdit) {
+    // The LAST image provided is the base image to edit; earlier images are
+    // the character references for consistency.
+    return [
+      "You are given reference images of an established character, followed by a BASE image (the most recent image) that was generated earlier.",
+      "Your task: take the BASE image and modify ONLY what the request asks to change. Keep everything else as close to the base image as possible — same character, same composition, same style, same colors.",
+      "Do not redraw from scratch. Edit the base image so it still clearly looks like a continuation of it.",
+      "",
+      "ABSOLUTE RULE — NO text, letters, words, captions, or writing anywhere in the image.",
+      "",
+      `Requested change: ${translatedPrompt}.${styleSuffix}`,
+      "",
+      "Output the edited image. Keep the same character identity and overall look as the base image. No text. 1:1 square, high quality.",
+    ].join(" ");
+  }
+
+  if (project === "apepe") {
+    return buildApepePrompt(translatedPrompt, styleSuffix);
+  }
+  return buildGenericPrompt(translatedPrompt, styleSuffix);
+}
+
 export type GenerateOptions = {
   prompt: string;
   style?: string;
   referenceImages?: string[];
   count?: number;
+  project?: string;
+  baseImage?: string; // data URL of a previously generated image to edit
 };
 
 export type GenerateResult = {
@@ -200,16 +248,21 @@ export async function generateImages({
   style,
   referenceImages = [],
   count = 4,
+  project = "apepe",
+  baseImage,
 }: GenerateOptions): Promise<GenerateResult> {
   if (!apiKey) {
     throw new Error("GOOGLE_AI_API_KEY is not configured");
   }
 
-  const translatedPrompt = await translatePrompt(prompt);
-  const fullPrompt = buildPrompt(translatedPrompt, style);
+  const isEdit = typeof baseImage === "string" && baseImage.length > 0;
 
-  // Use ONLY the first reference (the signature illustration, sorted first)
-  const limitedRefs = referenceImages.slice(0, 1);
+  const translatedPrompt = await translatePrompt(prompt);
+  const fullPrompt = buildPrompt(translatedPrompt, style, project, isEdit);
+
+  // Use up to 3 references (e.g. front / side / back) for stronger
+  // character consistency. The folder is sorted by filename.
+  const limitedRefs = referenceImages.slice(0, 3);
 
   const parts: ContentPart[] = [{ text: fullPrompt }];
 
@@ -222,8 +275,18 @@ export async function generateImages({
     }
   }
 
+  // In edit mode, append the base image LAST so it's the most recent context.
+  if (isEdit && baseImage) {
+    const match = baseImage.match(/^data:(.+?);base64,(.+)$/);
+    if (match) {
+      parts.push({
+        inlineData: { mimeType: match[1], data: match[2] },
+      });
+    }
+  }
+
   console.log(
-    `[nano-banana] Model: ${MODEL_ID} | Refs: ${limitedRefs.length} | Prompt: "${prompt}"`,
+    `[nano-banana] Model: ${MODEL_ID} | Refs: ${limitedRefs.length} | Edit: ${isEdit} | Prompt: "${prompt}"`,
   );
 
   const settledResults = await Promise.allSettled(
