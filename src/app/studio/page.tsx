@@ -16,17 +16,20 @@ import {
   Maximize2,
   Images,
   Image as ImageIcon,
+  Lock,
+  Wand2,
 } from "lucide-react";
+import { TESTING } from "@/lib/config";
 
 const PROJECTS = [
   { id: "apepe", name: "APEPE", active: true, img: "/apepe-icon.png" },
-  { id: "slot-1", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-1.png" },
-  { id: "slot-2", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-2.png" },
-  { id: "slot-3", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-3.png" },
-  { id: "slot-4", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-4.png" },
-  { id: "slot-5", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-5.png" },
-  { id: "slot-6", name: "Soon", active: false, comingSoon: true, img: "/coins/coin-6.png" },
-  { id: "more", name: "More", active: false, isMore: true },
+  { id: "coin-1", name: "Soon", active: false, locked: true, img: "/coins/coin-1.png" },
+  { id: "coin-2", name: "Soon", active: false, locked: true, img: "/coins/coin-2.png" },
+  { id: "coin-3", name: "Soon", active: false, locked: true, img: "/coins/coin-3.png" },
+  { id: "coin-4", name: "Soon", active: false, locked: true, img: "/coins/coin-4.png" },
+  { id: "coin-5", name: "Soon", active: false, locked: true, img: "/coins/coin-5.png" },
+  { id: "coin-6", name: "Soon", active: false, locked: true, img: "/coins/coin-6.png" },
+  { id: "coin-7", name: "Soon", active: false, locked: true, img: "/coins/coin-7.png" },
 ];
 
 const STYLE_PRESETS = [
@@ -63,12 +66,15 @@ export default function StudioPage() {
   const [styleOpen, setStyleOpen] = useState(false);
   const [imageCount, setImageCount] = useState(4);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState("apepe");
   const [results, setResults] = useState<GenerationResult[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [modalImage, setModalImage] = useState<{
     src: string;
     prompt: string;
   } | null>(null);
+  // The image currently selected to edit (its data URL), or null for fresh generation.
+  const [editBase, setEditBase] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,9 +91,24 @@ export default function StudioPage() {
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
+  // Read ?project= and ?prompt= from the URL on mount (set from the landing page).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("project");
+    if (p) {
+      const match = PROJECTS.find((proj) => proj.id === p);
+      if (match && (match.active || TESTING)) {
+        setSelectedProject(p);
+      }
+    }
+    const pr = params.get("prompt");
+    if (pr) setPrompt(pr);
+  }, []);
+
   async function handleGenerate() {
     if (!prompt.trim() || isGenerating) return;
 
+    const baseImage = editBase; // capture current edit target
     const id = `gen_${Date.now()}`;
     const newResult: GenerationResult = {
       id,
@@ -101,6 +122,7 @@ export default function StudioPage() {
 
     setResults((prev) => [...prev, newResult]);
     setPrompt("");
+    setEditBase(null); // consume the edit target
     setIsGenerating(true);
 
     try {
@@ -111,7 +133,8 @@ export default function StudioPage() {
           prompt: newResult.prompt,
           style: newResult.style,
           count: imageCount,
-          project: "apepe",
+          project: selectedProject,
+          baseImage: baseImage || undefined,
         }),
       });
 
@@ -193,53 +216,65 @@ export default function StudioPage() {
               Projects
             </p>
             <div className="space-y-1.5">
-              {PROJECTS.map((proj) => (
-                <button
-                  key={proj.id}
-                  disabled={!proj.active}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] transition ${
-                    proj.active
-                      ? "border border-brand/30 bg-brand/10 text-white"
-                      : "cursor-not-allowed text-zinc-500"
-                  }`}
-                >
-                  {proj.isMore ? (
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                        <span className="text-lg leading-none text-zinc-500">
-                          ···
-                        </span>
-                      </div>
-                      <span className="text-zinc-500">More</span>
-                    </div>
-                  ) : (
-                    <>
+              {PROJECTS.map((proj) => {
+                const isSelected = selectedProject === proj.id;
+                // In TESTING mode every slot is selectable; otherwise only APEPE.
+                const clickable = TESTING || proj.active;
+                const showLocked = proj.locked && !TESTING;
+
+                return (
+                  <button
+                    key={proj.id}
+                    disabled={!clickable}
+                    onClick={() => clickable && setSelectedProject(proj.id)}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] transition ${
+                      isSelected
+                        ? "border border-brand/30 bg-brand/10 text-white"
+                        : clickable
+                          ? "text-zinc-300 hover:bg-white/5"
+                          : "cursor-not-allowed text-zinc-500"
+                    }`}
+                  >
+                    {showLocked ? (
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`h-9 w-9 overflow-hidden rounded-full ${
-                            proj.active
-                              ? "ring-1 ring-brand/40"
-                              : "ring-1 ring-white/10"
-                          }`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={proj.img}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
+                          <Lock size={15} className="text-zinc-600" />
                         </div>
-                        <span className={proj.active ? "font-semibold" : ""}>
-                          {proj.active ? proj.name : "Soon"}
-                        </span>
+                        <span className="text-zinc-600">Soon</span>
                       </div>
-                      {proj.active && (
-                        <span className="h-2 w-2 rounded-full bg-brand" />
-                      )}
-                    </>
-                  )}
-                </button>
-              ))}
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ${
+                              isSelected
+                                ? "ring-1 ring-brand/40"
+                                : "ring-1 ring-white/10"
+                            }`}
+                          >
+                            {proj.img ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={proj.img}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Lock size={14} className="text-zinc-500" />
+                            )}
+                          </div>
+                          <span className={isSelected ? "font-semibold" : ""}>
+                            {proj.active ? proj.name : proj.id}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <span className="h-2 w-2 rounded-full bg-brand" />
+                        )}
+                      </>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* APEPE card — right below the project list */}
@@ -327,6 +362,14 @@ export default function StudioPage() {
                       setModalImage({ src, prompt: result.prompt })
                     }
                     onDownload={(src) => downloadImage(src, result.prompt)}
+                    onEdit={(src) => {
+                      setEditBase(src);
+                      // bring focus to input area by scrolling down
+                      if (scrollRef.current) {
+                        scrollRef.current.scrollTop =
+                          scrollRef.current.scrollHeight;
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -336,6 +379,30 @@ export default function StudioPage() {
 
         <div className="border-t border-white/5 bg-[rgb(var(--bg-card))]/80 px-4 py-4 backdrop-blur sm:px-8 sm:py-5">
           <div className="mx-auto max-w-5xl">
+            {editBase && (
+              <div className="animate-fade-in mb-3 flex items-center gap-3 rounded-xl border border-brand/30 bg-brand/10 p-2.5">
+                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg ring-1 ring-brand/40">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={editBase}
+                    alt="Editing"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex flex-1 items-center gap-2 text-sm">
+                  <Wand2 size={15} className="text-brand" />
+                  <span className="text-zinc-200">
+                    Editing this image — describe the change
+                  </span>
+                </div>
+                <button
+                  onClick={() => setEditBase(null)}
+                  className="rounded-lg px-2.5 py-1.5 text-xs text-zinc-400 transition hover:bg-white/5 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             {styleOpen && (
               <div className="animate-fade-in mb-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
@@ -527,17 +594,16 @@ function ResultCard({
   result,
   onImageClick,
   onDownload,
+  onEdit,
 }: {
   result: GenerationResult;
   onImageClick: (src: string) => void;
   onDownload: (src: string) => void;
+  onEdit: (src: string) => void;
 }) {
-  const gridCols =
-    result.count === 1
-      ? "grid-cols-1"
-      : result.count === 2
-        ? "grid-cols-2"
-        : "grid-cols-2 sm:grid-cols-4";
+  // Always lay out on a 4-column grid so each image is the same size
+  // whether the user generated 1, 2, or 4 images.
+  const gridCols = "grid-cols-2 sm:grid-cols-4";
 
   return (
     <div className="animate-fade-in-up space-y-3">
@@ -621,6 +687,17 @@ function ResultCard({
                         aria-label="View larger"
                       >
                         <Maximize2 size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEdit(img);
+                        }}
+                        className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-lg bg-black/70 text-white backdrop-blur transition hover:bg-black/90"
+                        aria-label="Edit this image"
+                        title="Edit this image"
+                      >
+                        <Wand2 size={12} />
                       </button>
                       <button
                         onClick={(e) => {

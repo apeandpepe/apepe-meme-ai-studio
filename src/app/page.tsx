@@ -1,19 +1,43 @@
-import Link from "next/link";
-import { Sparkles, ChevronDown } from "lucide-react";
+"use client";
 
-// Coin slots — original characters (user-made), shown as upcoming projects.
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Sparkles, ChevronDown, Lock } from "lucide-react";
+import { TESTING } from "@/lib/config";
+
+// Project slots. APEPE is active; coin-1..coin-7 are locked ("Soon").
+// The generation engine is generic — each locked slot maps to its own
+// reference folder (public/references/coin-N/) and unlocks later.
 const COIN_SLOTS = [
   { id: "apepe", active: true, img: "/apepe-icon.png" },
-  { id: "slot-1", active: false, img: "/coins/coin-1.png" },
-  { id: "slot-2", active: false, img: "/coins/coin-2.png" },
-  { id: "slot-3", active: false, img: "/coins/coin-3.png" },
-  { id: "slot-4", active: false, img: "/coins/coin-4.png" },
-  { id: "slot-5", active: false, img: "/coins/coin-5.png" },
-  { id: "slot-6", active: false, img: "/coins/coin-6.png" },
-  { id: "more", active: false, isMore: true },
+  { id: "coin-1", active: false, locked: true, img: "/coins/coin-1.png" },
+  { id: "coin-2", active: false, locked: true, img: "/coins/coin-2.png" },
+  { id: "coin-3", active: false, locked: true, img: "/coins/coin-3.png" },
+  { id: "coin-4", active: false, locked: true, img: "/coins/coin-4.png" },
+  { id: "coin-5", active: false, locked: true, img: "/coins/coin-5.png" },
+  { id: "coin-6", active: false, locked: true, img: "/coins/coin-6.png" },
+  { id: "coin-7", active: false, locked: true, img: "/coins/coin-7.png" },
 ];
 
 export default function HomePage() {
+  const router = useRouter();
+  const [selected, setSelected] = useState("apepe");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [prompt, setPrompt] = useState("");
+
+  const selectableSlots = COIN_SLOTS.filter((s) => s.active || TESTING);
+  const selectedSlot =
+    COIN_SLOTS.find((s) => s.id === selected) ?? COIN_SLOTS[0];
+  const selectedLabel = selectedSlot.active ? "APEPE" : selectedSlot.id;
+
+  function go() {
+    const params = new URLSearchParams();
+    params.set("project", selected);
+    if (prompt.trim()) params.set("prompt", prompt.trim());
+    router.push(`/studio?${params.toString()}`);
+  }
+
   return (
     <main className="relative flex h-dvh min-h-[680px] flex-col overflow-hidden bg-[rgb(var(--bg-primary))]">
       {/* Background glow on the right (behind characters) */}
@@ -106,29 +130,79 @@ export default function HomePage() {
 
             {/* Input bar */}
             <div className="mt-10 w-full max-w-[780px]">
-              <Link href="/studio" className="group block">
-                <div className="card-border flex items-center gap-3 rounded-2xl bg-[rgb(var(--bg-card))] p-3 transition group-hover:border-brand/30">
-                  <button className="flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
+              <div className="card-border flex items-center gap-3 rounded-2xl bg-[rgb(var(--bg-card))] p-3 transition focus-within:border-brand/30">
+                {/* Character dropdown */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDropdownOpen((v) => !v)}
+                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 transition hover:bg-white/[0.06]"
+                  >
                     <div className="h-7 w-7 overflow-hidden rounded-full ring-1 ring-brand/30">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src="/apepe-icon.png"
-                        alt="APEPE"
+                        src={selectedSlot.img}
+                        alt=""
                         className="h-full w-full object-cover"
                       />
                     </div>
-                    <span className="text-base font-bold">APEPE</span>
+                    <span className="text-base font-bold">{selectedLabel}</span>
                     <ChevronDown size={18} className="text-zinc-500" />
                   </button>
-                  <span className="flex-1 px-2 text-base text-zinc-600">
-                    Describe your meme...
-                  </span>
-                  <span className="btn-glow flex shrink-0 items-center gap-2 rounded-xl bg-brand px-6 py-3.5 text-base font-bold text-black transition group-hover:bg-brand-bright">
-                    <Sparkles size={17} />
-                    Generate
-                  </span>
+
+                  {dropdownOpen && (
+                    <div className="absolute bottom-full left-0 z-50 mb-2 max-h-72 w-52 overflow-y-auto rounded-xl border border-white/10 bg-[rgb(var(--bg-card))] p-1.5 shadow-xl">
+                      {selectableSlots.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setSelected(s.id);
+                            setDropdownOpen(false);
+                          }}
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                            selected === s.id
+                              ? "bg-brand/10 text-white"
+                              : "text-zinc-300 hover:bg-white/5"
+                          }`}
+                        >
+                          <div className="h-6 w-6 overflow-hidden rounded-full ring-1 ring-white/10">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={s.img}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                          <span className="text-sm font-semibold">
+                            {s.active ? "APEPE" : s.id}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </Link>
+
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") go();
+                  }}
+                  placeholder="Describe your meme..."
+                  className="flex-1 bg-transparent px-2 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
+                />
+
+                <button
+                  type="button"
+                  onClick={go}
+                  className="btn-glow flex shrink-0 items-center gap-2 rounded-xl bg-brand px-6 py-3.5 text-base font-bold text-black transition hover:bg-brand-bright"
+                >
+                  <Sparkles size={17} />
+                  Generate
+                </button>
+              </div>
               <p className="mt-2.5 pl-2 text-xs text-zinc-600">
                 Example: APEPE as a cyberpunk warrior in Tokyo
               </p>
@@ -152,49 +226,65 @@ export default function HomePage() {
             Supported Meme Coins
           </h3>
           <div className="mx-auto grid max-w-6xl grid-cols-4 gap-3 sm:grid-cols-8 sm:gap-4">
-            {COIN_SLOTS.map((slot) => (
-              <div
-                key={slot.id}
-                className={`flex aspect-square flex-col items-center justify-center gap-2.5 rounded-2xl border p-3.5 transition ${
-                  slot.active
-                    ? "border-brand/50 bg-brand/[0.06]"
-                    : "border-white/[0.06] bg-white/[0.015]"
-                }`}
-              >
-                {slot.isMore ? (
-                  <>
-                    <div className="flex h-14 w-14 items-center justify-center">
-                      <span className="text-3xl text-zinc-600">···</span>
-                    </div>
-                    <span className="text-[13px] font-semibold text-zinc-500">
-                      More
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <div
-                      className={`h-14 w-14 overflow-hidden rounded-full ${
-                        slot.active ? "ring-1 ring-brand/40" : "ring-1 ring-white/10"
-                      }`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={slot.img}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <span
-                      className={`text-[13px] font-semibold ${
-                        slot.active ? "text-brand" : "text-zinc-500"
-                      }`}
-                    >
-                      {slot.active ? "APEPE" : "Soon"}
-                    </span>
-                  </>
-                )}
-              </div>
-            ))}
+            {COIN_SLOTS.map((slot) => {
+              const selectable = slot.active || TESTING;
+              const inner = (
+                <>
+                  {slot.locked && !TESTING ? (
+                    <>
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
+                        <Lock size={20} className="text-zinc-600" />
+                      </div>
+                      <span className="text-[13px] font-semibold text-zinc-600">
+                        Soon
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full ${
+                          slot.active ? "ring-1 ring-brand/40" : "ring-1 ring-white/10"
+                        }`}
+                      >
+                        {slot.img ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={slot.img}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Lock size={18} className="text-zinc-500" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-[13px] font-semibold ${
+                          slot.active ? "text-brand" : "text-zinc-500"
+                        }`}
+                      >
+                        {slot.active ? "APEPE" : slot.id}
+                      </span>
+                    </>
+                  )}
+                </>
+              );
+
+              const className = `flex aspect-square flex-col items-center justify-center gap-2.5 rounded-2xl border p-3.5 transition ${
+                slot.active
+                  ? "border-brand/50 bg-brand/[0.06]"
+                  : "border-white/[0.06] bg-white/[0.015]"
+              } ${selectable ? "hover:border-brand/40 hover:bg-white/[0.04]" : ""}`;
+
+              return selectable ? (
+                <Link key={slot.id} href={`/studio?project=${slot.id}`} className={className}>
+                  {inner}
+                </Link>
+              ) : (
+                <div key={slot.id} className={className}>
+                  {inner}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
