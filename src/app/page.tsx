@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles, ChevronDown, Lock } from "lucide-react";
-import { TESTING } from "@/lib/config";
+import { UNLOCK_ALL } from "@/lib/config";
 
 // Project slots. APEPE is active; coin-1..coin-7 are locked ("Soon").
 // The generation engine is generic — each locked slot maps to its own
@@ -18,6 +18,10 @@ const COIN_SLOTS = [
   { id: "coin-5", active: false, locked: true, img: "/coins/coin-5.png" },
   { id: "coin-6", active: false, locked: true, img: "/coins/coin-6.png" },
   { id: "coin-7", active: false, locked: true, img: "/coins/coin-7.png" },
+  { id: "coin-8", active: false, locked: true, img: "/coins/coin-8.png" },
+  { id: "coin-9", active: false, locked: true, img: "/coins/coin-9.png" },
+  { id: "coin-10", active: false, locked: true },
+  { id: "more", active: false, isMore: true },
 ];
 
 export default function HomePage() {
@@ -26,7 +30,7 @@ export default function HomePage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
 
-  const selectableSlots = COIN_SLOTS.filter((s) => s.active || TESTING);
+  const selectableSlots = COIN_SLOTS.filter((s) => s.active || UNLOCK_ALL);
   const selectedSlot =
     COIN_SLOTS.find((s) => s.id === selected) ?? COIN_SLOTS[0];
   const selectedLabel = selectedSlot.active ? "APEPE" : selectedSlot.id;
@@ -225,51 +229,61 @@ export default function HomePage() {
           <h3 className="font-display mb-4 text-center text-xl font-bold sm:text-2xl">
             Supported Meme Coins
           </h3>
-          <div className="mx-auto grid max-w-6xl grid-cols-4 gap-3 sm:grid-cols-8 sm:gap-4">
+          <div className="mx-auto grid max-w-5xl grid-cols-4 gap-3 sm:grid-cols-6 sm:gap-3.5">
             {COIN_SLOTS.map((slot) => {
-              const selectable = slot.active || TESTING;
-              const inner = (
-                <>
-                  {slot.locked && !TESTING ? (
-                    <>
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
-                        <Lock size={20} className="text-zinc-600" />
-                      </div>
-                      <span className="text-[13px] font-semibold text-zinc-600">
-                        Soon
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <div
-                        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full ${
-                          slot.active ? "ring-1 ring-brand/40" : "ring-1 ring-white/10"
-                        }`}
-                      >
-                        {slot.img ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={slot.img}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <Lock size={18} className="text-zinc-500" />
-                        )}
-                      </div>
-                      <span
-                        className={`text-[13px] font-semibold ${
-                          slot.active ? "text-brand" : "text-zinc-500"
-                        }`}
-                      >
-                        {slot.active ? "APEPE" : slot.id}
-                      </span>
-                    </>
-                  )}
-                </>
-              );
+              const selectable = !slot.isMore && (slot.active || UNLOCK_ALL);
 
-              const className = `flex aspect-square flex-col items-center justify-center gap-2.5 rounded-2xl border p-3.5 transition ${
+              let inner;
+              if (slot.isMore) {
+                inner = (
+                  <>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
+                      <span className="-mt-1 text-2xl leading-none text-zinc-600">
+                        ···
+                      </span>
+                    </div>
+                    <span className="text-[13px] font-semibold text-zinc-500">
+                      More
+                    </span>
+                  </>
+                );
+              } else if (slot.locked && !UNLOCK_ALL) {
+                inner = (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
+                    <Lock size={20} className="text-zinc-600" />
+                  </div>
+                );
+              } else {
+                inner = (
+                  <>
+                    <div
+                      className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-full ${
+                        slot.active ? "ring-1 ring-brand/40" : "ring-1 ring-white/10"
+                      }`}
+                    >
+                      {slot.img ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={slot.img}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xl font-semibold text-zinc-600">
+                          ?
+                        </span>
+                      )}
+                    </div>
+                    {slot.active && (
+                      <span className="text-[13px] font-semibold text-brand">
+                        APEPE
+                      </span>
+                    )}
+                  </>
+                );
+              }
+
+              const className = `flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border p-3.5 transition ${
                 slot.active
                   ? "border-brand/50 bg-brand/[0.06]"
                   : "border-white/[0.06] bg-white/[0.015]"

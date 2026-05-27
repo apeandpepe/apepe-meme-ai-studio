@@ -18,8 +18,13 @@ import {
   Image as ImageIcon,
   Lock,
   Wand2,
+  Video,
+  UserCircle,
+  Crown,
+  Zap,
+  Check,
 } from "lucide-react";
-import { TESTING } from "@/lib/config";
+import { UNLOCK_ALL, FREE_LIMIT_ON } from "@/lib/config";
 
 const PROJECTS = [
   { id: "apepe", name: "APEPE", active: true, img: "/apepe-icon.png" },
@@ -30,6 +35,10 @@ const PROJECTS = [
   { id: "coin-5", name: "Soon", active: false, locked: true, img: "/coins/coin-5.png" },
   { id: "coin-6", name: "Soon", active: false, locked: true, img: "/coins/coin-6.png" },
   { id: "coin-7", name: "Soon", active: false, locked: true, img: "/coins/coin-7.png" },
+  { id: "coin-8", name: "Soon", active: false, locked: true, img: "/coins/coin-8.png" },
+  { id: "coin-9", name: "Soon", active: false, locked: true, img: "/coins/coin-9.png" },
+  { id: "coin-10", name: "Soon", active: false, locked: true },
+  { id: "more", name: "More", active: false, isMore: true },
 ];
 
 const STYLE_PRESETS = [
@@ -48,6 +57,37 @@ const ESTIMATED_SECONDS: Record<number, number> = {
   2: 16,
   4: 22,
 };
+
+// Free daily generation limit (per browser). Active only when FREE_LIMIT_ON.
+const FREE_LIMIT = 5;
+const USAGE_KEY = "apepe_usage";
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function readUsage(): number {
+  try {
+    const raw = localStorage.getItem(USAGE_KEY);
+    if (!raw) return 0;
+    const data = JSON.parse(raw) as { date: string; count: number };
+    if (data.date !== todayStr()) return 0; // new day → reset
+    return data.count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeUsage(count: number) {
+  try {
+    localStorage.setItem(
+      USAGE_KEY,
+      JSON.stringify({ date: todayStr(), count }),
+    );
+  } catch {
+    // ignore
+  }
+}
 
 type GenerationResult = {
   id: string;
@@ -75,6 +115,11 @@ export default function StudioPage() {
   } | null>(null);
   // The image currently selected to edit (its data URL), or null for fresh generation.
   const [editBase, setEditBase] = useState<string | null>(null);
+  // Top-header mode tabs. Only "image" is active; pfp/video are coming soon.
+  const [activeMode, setActiveMode] = useState("image");
+  // Free daily usage count (localStorage-backed). Shown as "Today X/FREE_LIMIT".
+  const [usedToday, setUsedToday] = useState(0);
+  const [showLimitModal, setShowLimitModal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,13 +136,18 @@ export default function StudioPage() {
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
 
+  // Load today's free-usage count on mount.
+  useEffect(() => {
+    setUsedToday(readUsage());
+  }, []);
+
   // Read ?project= and ?prompt= from the URL on mount (set from the landing page).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("project");
     if (p) {
       const match = PROJECTS.find((proj) => proj.id === p);
-      if (match && (match.active || TESTING)) {
+      if (match && (match.active || UNLOCK_ALL)) {
         setSelectedProject(p);
       }
     }
@@ -107,6 +157,12 @@ export default function StudioPage() {
 
   async function handleGenerate() {
     if (!prompt.trim() || isGenerating) return;
+
+    // Free daily limit (only when FREE_LIMIT_ON).
+    if (FREE_LIMIT_ON && usedToday >= FREE_LIMIT) {
+      setShowLimitModal(true);
+      return;
+    }
 
     const baseImage = editBase; // capture current edit target
     const id = `gen_${Date.now()}`;
@@ -146,6 +202,13 @@ export default function StudioPage() {
           r.id === id ? { ...r, images: data.images, loading: false } : r,
         ),
       );
+
+      // Count this generation toward the free daily limit.
+      if (FREE_LIMIT_ON) {
+        const next = readUsage() + 1;
+        writeUsage(next);
+        setUsedToday(next);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       setResults((prev) =>
@@ -182,7 +245,86 @@ export default function StudioPage() {
   const activeStyle = STYLE_PRESETS.find((s) => s.id === selectedStyle);
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-[rgb(var(--bg-primary))]">
+    <div className="flex h-dvh w-full flex-col overflow-hidden bg-[rgb(var(--bg-primary))]">
+      {/* Top full-width header */}
+      <header className="z-30 flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-5">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="h-9 w-9 overflow-hidden rounded-full ring-1 ring-brand/30">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/apepe-icon.png"
+                alt="APEPE"
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="hidden sm:block">
+              <p className="font-display text-base font-bold leading-tight">
+                Meme <span className="text-brand">AI</span> Studio
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Powered by <span className="text-brand">APEPE</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Mode tabs */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setActiveMode("image")}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${
+                activeMode === "image"
+                  ? "bg-brand text-black"
+                  : "text-zinc-300 hover:bg-white/5"
+              }`}
+            >
+              <ImageIcon size={15} />
+              <span className="font-medium">Image</span>
+            </button>
+            <button
+              disabled
+              className="flex cursor-not-allowed items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-600"
+            >
+              <UserCircle size={15} />
+              <span className="font-medium">PFP</span>
+              <Lock size={12} />
+            </button>
+            <button
+              disabled
+              className="flex cursor-not-allowed items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-600"
+            >
+              <Video size={15} />
+              <span className="font-medium">Video</span>
+              <Lock size={12} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <a
+            href="https://apepe.lol"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl border border-white/12 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/30 hover:text-white"
+          >
+            About
+          </a>
+          <a
+            href="https://x.com/APEPE_MEME"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/12 text-zinc-200 transition hover:border-white/30 hover:text-white"
+            aria-label="Twitter / X"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+          </a>
+        </div>
+      </header>
+
+      {/* Sidebar + main row */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
@@ -216,65 +358,98 @@ export default function StudioPage() {
               Projects
             </p>
             <div className="space-y-1.5">
-              {PROJECTS.map((proj) => {
+              {/* APEPE — labeled row */}
+              {PROJECTS.filter((p) => p.active).map((proj) => {
                 const isSelected = selectedProject === proj.id;
-                // In TESTING mode every slot is selectable; otherwise only APEPE.
-                const clickable = TESTING || proj.active;
-                const showLocked = proj.locked && !TESTING;
-
                 return (
                   <button
                     key={proj.id}
-                    disabled={!clickable}
-                    onClick={() => clickable && setSelectedProject(proj.id)}
+                    onClick={() => setSelectedProject(proj.id)}
                     className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[15px] transition ${
                       isSelected
                         ? "border border-brand/30 bg-brand/10 text-white"
-                        : clickable
-                          ? "text-zinc-300 hover:bg-white/5"
-                          : "cursor-not-allowed text-zinc-500"
+                        : "text-zinc-300 hover:bg-white/5"
                     }`}
                   >
-                    {showLocked ? (
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.03] ring-1 ring-white/10">
-                          <Lock size={15} className="text-zinc-600" />
-                        </div>
-                        <span className="text-zinc-600">Soon</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ring-brand/40">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={proj.img}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ${
-                              isSelected
-                                ? "ring-1 ring-brand/40"
-                                : "ring-1 ring-white/10"
-                            }`}
-                          >
-                            {proj.img ? (
-                              /* eslint-disable-next-line @next/next/no-img-element */
-                              <img
-                                src={proj.img}
-                                alt=""
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <Lock size={14} className="text-zinc-500" />
-                            )}
-                          </div>
-                          <span className={isSelected ? "font-semibold" : ""}>
-                            {proj.active ? proj.name : proj.id}
-                          </span>
-                        </div>
-                        {isSelected && (
-                          <span className="h-2 w-2 rounded-full bg-brand" />
-                        )}
-                      </>
-                    )}
+                      <span className="font-semibold">{proj.name}</span>
+                    </div>
+                    <span className="h-2 w-2 rounded-full bg-brand" />
                   </button>
                 );
               })}
+
+              {/* Coins — icon-only vertical list, ~7 visible then scroll; More at end */}
+              <div className="mt-1 max-h-[300px] space-y-1 overflow-y-auto pr-1">
+                {PROJECTS.filter((p) => !p.active).map((proj) => {
+                  const isSelected = selectedProject === proj.id;
+                  const clickable = !proj.isMore && (UNLOCK_ALL || proj.active);
+                  const showLocked = proj.locked && !UNLOCK_ALL;
+
+                  let icon;
+                  if (proj.isMore) {
+                    icon = (
+                      <span className="-mt-1 text-lg leading-none text-zinc-600">
+                        ···
+                      </span>
+                    );
+                  } else if (showLocked) {
+                    icon = <Lock size={15} className="text-zinc-600" />;
+                  } else if (!proj.img) {
+                    icon = (
+                      <span className="text-base font-semibold text-zinc-600">
+                        ?
+                      </span>
+                    );
+                  } else {
+                    icon = (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={proj.img}
+                        alt=""
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={proj.id}
+                      disabled={!clickable}
+                      onClick={() => clickable && setSelectedProject(proj.id)}
+                      title={proj.isMore ? "More coming soon" : undefined}
+                      className={`flex w-full items-center rounded-xl px-3 py-2 transition ${
+                        isSelected
+                          ? "border border-brand/30 bg-brand/10"
+                          : clickable
+                            ? "hover:bg-white/5"
+                            : "cursor-not-allowed"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full ring-1 ${
+                          isSelected ? "ring-brand/50" : "ring-white/10"
+                        } ${proj.isMore || showLocked || !proj.img ? "bg-white/[0.03]" : ""}`}
+                      >
+                        {icon}
+                      </div>
+                      {proj.isMore && (
+                        <span className="ml-3 text-[15px] text-zinc-500">
+                          More
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* APEPE card — right below the project list */}
@@ -490,13 +665,26 @@ export default function StudioPage() {
                 <span className="hidden sm:inline">Generate</span>
               </button>
             </div>
-            <p className="mt-2.5 px-2 text-xs text-zinc-600">
-              Tip: Be specific for better results. Example: &quot;APEPE as a king
-              in a medieval castle&quot;
-            </p>
+            <div className="mt-2.5 flex items-center justify-between gap-3 px-2">
+              <p className="text-xs text-zinc-600">
+                Tip: Be specific for better results.
+              </p>
+              {FREE_LIMIT_ON && (
+                <div className="shrink-0 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-1">
+                  <span className="text-[11px] text-zinc-400">
+                    Today{" "}
+                    <span className="font-medium text-brand">
+                      {usedToday}/{FREE_LIMIT}
+                    </span>{" "}
+                    free
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>
+      </div>
 
       {modalImage && (
         <div
@@ -531,6 +719,65 @@ export default function StudioPage() {
                 Download
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Free limit reached modal */}
+      {showLimitModal && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setShowLimitModal(false)}
+        >
+          <div
+            className="w-[360px] rounded-[18px] border border-white/12 bg-[rgb(var(--bg-card))] p-7 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand/10">
+              <Zap size={26} className="text-brand" />
+            </div>
+            <p className="text-lg font-semibold">
+              You&apos;re out of free generations
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              You&apos;ve used all {FREE_LIMIT} free generations today.
+              <br />
+              Premium is coming soon.
+            </p>
+
+            <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-left">
+              <div className="mb-2.5 flex items-center gap-2">
+                <Crown size={18} className="text-brand" />
+                <span className="text-sm font-medium">APEPE Premium</span>
+                <span className="ml-auto rounded-full bg-brand/15 px-2.5 py-1 text-[11px] text-brand">
+                  Coming soon
+                </span>
+              </div>
+              <div className="space-y-1.5 text-[13px] text-zinc-400">
+                <div className="flex items-center gap-1.5">
+                  <Check size={14} className="text-brand" />
+                  Unlimited image generation
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check size={14} className="text-brand" />
+                  PFP &amp; video generation
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Check size={14} className="text-brand" />
+                  No watermark
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 cursor-not-allowed rounded-xl bg-brand py-2.5 text-sm font-semibold text-black opacity-60">
+              Notify me (coming soon)
+            </div>
+            <button
+              onClick={() => setShowLimitModal(false)}
+              className="mt-3.5 text-xs text-zinc-500 transition hover:text-zinc-300"
+            >
+              Your {FREE_LIMIT} free generations reset tomorrow
+            </button>
           </div>
         </div>
       )}
