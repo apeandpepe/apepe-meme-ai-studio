@@ -51,34 +51,17 @@ async function translatePrompt(userPrompt: string): Promise<string> {
 
 function buildApepePrompt(translatedPrompt: string, styleSuffix: string) {
   return [
-    "You are given reference images of a specific established cartoon character named APEPE. Use them ONLY to learn the CHARACTER's face and body identity — NOT its clothing.",
-    "Redraw THIS SAME character in the requested scene. It must be instantly recognizable as APEPE, with a strong, fierce, tough vibe — NOT a soft, cute, or generic frog, and NOT Pepe the Frog.",
-    "",
-    "LOCKED FACE — reproduce these EXACT features in every image, identical to the reference, regardless of scene. This face is the core identity:",
-    "- EYES: wide, glaring, intense eyes with thick heavy upper eyelids / eye-bags (no eyebrows at all — it is not human). The IRIS / eye color is a fixed reddish-orange / amber, exactly matching the reference — this specific eye color must be the same in every image. The eyes look fierce and determined. This eye look + color is the #1 signature.",
-    "- BROW WRINKLES: a permanent furrowed, frowning crease above the nose / between the eyes — a tense scowling expression that conveys toughness. This wrinkle is ALWAYS present, even when smiling.",
-    "- NOSE: a fixed upturned snub nose (pig-like / upturned), always.",
-    "- MOUTH: a closed, set mouth (not gaping, not goofy).",
-    "- FACE SHAPE: rounded but NOT chubby/puffy; the cheeks extend only very slightly past the outer corners of the eyes. A slight bit of jowl/under-chin. Solid and grounded, not bubbly or cartoonishly round like a typical frog meme.",
-    "- SKIN: the same green skin tone and the same smooth illustrated texture/shading as the reference.",
-    "",
-    "Avoid drifting toward a generic green frog or Pepe — APEPE's furrowed brow, glaring heavy-lidded eyes, and upturned nose make it its own tough character. Keep that intensity.",
-    "",
-    "HEAD ALWAYS COVERED: the top of the head is NEVER bare — something always covers it.",
-    "",
-    "DO NOT COPY THE REFERENCE'S CLOTHING. The hood/outfit in the reference is just a default — it is NOT part of the identity. Unless asked, do not reproduce the reference's hood or clothes.",
-    "",
-    "FREELY CHANGE to fit the requested scene:",
-    "- What covers the head: pick whatever fits the scene (crown for a king, helmet for a warrior, hat, cap, etc.). Only use a hood if nothing else fits.",
-    "- The full outfit for the scene.",
-    "- Expression (angry, happy, smug, etc.) — but ALWAYS keep the glaring heavy-lidded eyes and the furrowed brow wrinkle.",
-    "- Pose, action, accessories, background.",
-    "",
-    "ABSOLUTE RULE — NO text, letters, words, captions, or writing anywhere in the image.",
-    "",
+    "The attached reference images show one specific existing character called APEPE. Recreate THAT EXACT character. Do not redesign it or turn it into any other known character.",
+    "These signature traits MUST stay identical to the reference in every image (never change them):",
+    "1) Eye color — the same reddish-orange / amber eyes as the reference (this exact eye color is essential).",
+    "2) Eye style — the same heavy-lidded eye shape (keep the style, but the eyes look forward naturally; do not copy a reference's gaze direction or head tilt).",
+    "3) Skin — the same green skin tone and smooth texture.",
+    "4) Head ALWAYS covered — APEPE is NEVER bare-headed; it always wears headwear (hood, hat, cap, helmet, crown, beanie, etc.) suited to the scene. The head must be covered in every image.",
+    "If a reference shows an expression, take only the emotional mood from it and apply it to a natural front-facing view.",
+    "DO NOT copy the clothing/outfit from the reference. The hood and clothes in the reference are just a default and are NOT part of the character's identity. Instead, dress the character in an outfit that fits the requested scene.",
+    "Change the scene, outfit and background to match the request below; keep ONLY the signature traits above (eyes, skin, covered head) from the reference.",
     `Scene: ${translatedPrompt}.${styleSuffix}`,
-    "",
-    "Final check: wide glaring heavy-lidded eyes with the fixed reddish-orange/amber iris color, no eyebrows, permanent furrowed brow wrinkle above an upturned snub nose, closed set mouth, rounded-but-not-chubby green face with the reference texture, head covered to fit the scene, scene-appropriate outfit. Tough and fierce, not cute. No text. 1:1 square, high quality.",
+    "Final check: amber eyes, green skin, head covered, outfit matches the scene (not the reference's hood), no text. Square 1:1, high quality.",
   ].join(" ");
 }
 
@@ -296,17 +279,36 @@ export async function generateImages({
     `[nano-banana] Model: ${MODEL_ID} | Refs: ${limitedRefs.length} | Edit: ${isEdit} | Prompt: "${prompt}"`,
   );
 
-  const settledResults = await Promise.allSettled(
-    Array.from({ length: count }, (_, i) => generateSingleImage(parts, i)),
-  );
-
+  // Generate `count` images. Some single requests can fail (model refusal,
+  // transient error), so retry the shortfall up to a couple of rounds to
+  // fulfill the requested count.
   const images: string[] = [];
-  for (let i = 0; i < settledResults.length; i++) {
-    const result = settledResults[i];
-    if (result.status === "fulfilled" && result.value) {
-      images.push(result.value);
-    } else if (result.status === "rejected") {
-      console.error(`[nano-banana] Image ${i} rejected:`, result.reason);
+  const MAX_ROUNDS = 3; // 1 initial + 2 retries
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const remaining = count - images.length;
+    if (remaining <= 0) break;
+
+    const settledResults = await Promise.allSettled(
+      Array.from({ length: remaining }, (_, i) =>
+        generateSingleImage(parts, images.length + i),
+      ),
+    );
+
+    for (let i = 0; i < settledResults.length; i++) {
+      const result = settledResults[i];
+      if (result.status === "fulfilled" && result.value) {
+        images.push(result.value);
+      } else if (result.status === "rejected") {
+        console.error(`[nano-banana] Image rejected:`, result.reason);
+      }
+    }
+
+    if (images.length >= count) break;
+    if (round < MAX_ROUNDS - 1) {
+      console.warn(
+        `[nano-banana] Got ${images.length}/${count}, retrying ${count - images.length} more...`,
+      );
     }
   }
 

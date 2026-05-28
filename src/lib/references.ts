@@ -96,3 +96,44 @@ export async function getReferences(projectId: string): Promise<string[]> {
 export async function getApepeReferences(): Promise<string[]> {
   return getReferences("apepe");
 }
+
+/**
+ * APEPE expression → which reference files to send.
+ * The apepe folder is sorted: index 0..7 =
+ *   0 front, 1 side, 2 back, 3 slight-smile, 4 surprised,
+ *   5 sad, 6 big-grin, 7 angry.
+ * For an expression we send the front (0) plus that expression's image,
+ * so the model keeps the identity AND copies the exact expression we drew.
+ * Default ("none") sends front/side/back (0,1,2).
+ */
+const EXPRESSION_INDEX: Record<string, number> = {
+  smile: 3,
+  surprised: 4,
+  sad: 5,
+  grin: 6,
+  angry: 7,
+};
+
+export async function getApepeReferencesByExpression(
+  expression?: string,
+): Promise<string[]> {
+  const all = await getReferences("apepe");
+  if (all.length === 0) return [];
+
+  // No / unknown expression → front, side, back (first three).
+  if (!expression || !(expression in EXPRESSION_INDEX)) {
+    return all.slice(0, 3);
+  }
+
+  const front = all[0];
+  const exprIdx = EXPRESSION_INDEX[expression];
+  const exprImg = all[exprIdx];
+
+  // Order matters: the model weights the LAST image most heavily.
+  // Put the expression image first (mood reference) and the front view
+  // last so the front-facing identity/angle dominates.
+  const picked: string[] = [];
+  if (exprImg && exprImg !== front) picked.push(exprImg);
+  if (front) picked.push(front);
+  return picked;
+}

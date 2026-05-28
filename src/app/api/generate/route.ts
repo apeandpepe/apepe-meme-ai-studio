@@ -1,11 +1,57 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateImages } from "@/lib/nano-banana";
-import { getReferences } from "@/lib/references";
+import { getReferences, getApepeReferencesByExpression } from "@/lib/references";
 import { addWatermarks } from "@/lib/watermark";
 import { isProjectEnabled } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+// Detect a facial expression from the user's prompt (English + Korean).
+// Returns one of: smile, grin, surprised, sad, angry — or "" for default.
+function detectExpression(prompt: string): string {
+  const p = prompt.toLowerCase();
+  const has = (words: string[]) => words.some((w) => p.includes(w));
+
+  // Order matters: check the more specific / stronger ones first.
+  if (
+    has([
+      "angry", "furious", "rage", "mad", "fierce", "aggressive", "yelling",
+      "shouting", "scowl", "화난", "화가", "분노", "성난", "빡친", "열받",
+    ])
+  )
+    return "angry";
+  if (
+    has([
+      "surprised", "shocked", "shock", "astonished", "amazed", "gasp",
+      "wow", "놀란", "놀라", "충격", "깜짝",
+    ])
+  )
+    return "surprised";
+  if (
+    has([
+      "sad", "crying", "cry", "tears", "depressed", "gloomy", "upset",
+      "unhappy", "슬픈", "슬퍼", "우울", "시무룩", "울", "눈물",
+    ])
+  )
+    return "sad";
+  if (
+    has([
+      "laughing", "laugh", "big smile", "grin", "grinning", "joyful",
+      "cheerful", "활짝", "크게 웃", "함박", "웃음",
+    ])
+  )
+    return "grin";
+  if (
+    has([
+      "smile", "smiling", "happy", "glad", "content", "pleased",
+      "웃는", "웃고", "미소", "행복", "기쁜",
+    ])
+  )
+    return "smile";
+
+  return "";
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -39,8 +85,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Load references for the selected project's folder.
-    const referenceImages = await getReferences(project);
+    // Load references. For APEPE, pick references based on the expression
+    // detected in the prompt so the drawn expression is reused (not invented).
+    let referenceImages: string[];
+    if (project === "apepe") {
+      const expression = detectExpression(prompt);
+      referenceImages = await getApepeReferencesByExpression(expression);
+      if (expression) {
+        console.log(`[generate] APEPE expression detected: ${expression}`);
+      }
+    } else {
+      referenceImages = await getReferences(project);
+    }
 
     if (referenceImages.length === 0) {
       return NextResponse.json(
