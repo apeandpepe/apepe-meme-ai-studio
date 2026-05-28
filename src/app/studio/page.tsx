@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   Lock,
   Wand2,
+  Trash2,
   Video,
   UserCircle,
   Crown,
@@ -61,6 +62,7 @@ const ESTIMATED_SECONDS: Record<number, number> = {
 // Free daily generation limit (per browser). Active only when FREE_LIMIT_ON.
 const FREE_LIMIT = 5;
 const USAGE_KEY = "apepe_usage";
+const MAX_CONCURRENT = 3; // max simultaneous in-flight generations
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -89,6 +91,60 @@ function writeUsage(count: number) {
   }
 }
 
+// ---- Per-coin chat rooms (localStorage) ----
+// Each coin id has its own saved conversation. Images are stored too;
+// if storage fills up, the oldest results are dropped to make room.
+const ROOM_KEY_PREFIX = "apepe_room_";
+const MAX_RESULTS_PER_ROOM = 30; // hard cap per room
+
+function roomKey(projectId: string): string {
+  return `${ROOM_KEY_PREFIX}${projectId}`;
+}
+
+function loadRoom(projectId: string): GenerationResult[] {
+  try {
+    const raw = localStorage.getItem(roomKey(projectId));
+    if (!raw) return [];
+    const data = JSON.parse(raw) as GenerationResult[];
+    // Never restore a stuck "loading" state.
+    return data.map((r) => ({ ...r, loading: false }));
+  } catch {
+    return [];
+  }
+}
+
+function saveRoom(projectId: string, results: GenerationResult[]) {
+  // Only keep finished results (no loading/in-flight) and cap the count.
+  let toSave = results
+    .filter((r) => !r.loading)
+    .slice(-MAX_RESULTS_PER_ROOM);
+
+  // Try to save; if quota is exceeded, drop oldest results until it fits.
+  while (toSave.length > 0) {
+    try {
+      localStorage.setItem(roomKey(projectId), JSON.stringify(toSave));
+      return;
+    } catch {
+      // QuotaExceeded — drop the oldest result and retry.
+      toSave = toSave.slice(1);
+    }
+  }
+  // Nothing fit (e.g. one huge result) — clear the key.
+  try {
+    localStorage.removeItem(roomKey(projectId));
+  } catch {
+    // ignore
+  }
+}
+
+function clearRoom(projectId: string) {
+  try {
+    localStorage.removeItem(roomKey(projectId));
+  } catch {
+    // ignore
+  }
+}
+
 type GenerationResult = {
   id: string;
   prompt: string;
@@ -98,6 +154,8 @@ type GenerationResult = {
   loading?: boolean;
   error?: string;
   timestamp: number;
+  projectIcon?: string;
+  projectName?: string;
 };
 
 export default function StudioPage() {
@@ -108,7 +166,7 @@ export default function StudioPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState("apepe");
   const [results, setResults] = useState<GenerationResult[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeCount, setActiveCount] = useState(0);
   const [modalImage, setModalImage] = useState<{
     src: string;
     prompt: string;
@@ -141,7 +199,16 @@ export default function StudioPage() {
     setUsedToday(readUsage());
   }, []);
 
+  // When the selected coin (room) changes, load that room's saved conversation.
+  const currentRoomRef = useRef("apepe");
+  useEffect(() => {
+    currentRoomRef.current = selectedProject;
+    setResults(loadRoom(selectedProject));
+  }, [selectedProject]);
+
   // Read ?project= and ?prompt= from the URL on mount (set from the landing page).
+  // If a prompt is present, auto-run the generation once (came from "search & go").
+  const autoRanRef = useRef(false);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("project");
@@ -152,11 +219,33 @@ export default function StudioPage() {
       }
     }
     const pr = params.get("prompt");
-    if (pr) setPrompt(pr);
+    const validProject =
+      p && PROJECTS.find((proj) => proj.id === p && (proj.active || UNLOCK_ALL))
+        ? p
+        : "apepe";
+    if (pr) {
+      setPrompt(pr);
+      // Auto-generate once, using the prompt + project directly (state isn't ready yet).
+      if (!autoRanRef.current) {
+        autoRanRef.current = true;
+        setTimeout(() => handleGenerate(pr, validProject), 100);
+      }
+    }
+
+    // Clean the URL so the prompt isn't shown in the address bar and a
+    // refresh doesn't auto-generate again.
+    if (p || pr) {
+      window.history.replaceState(null, "", "/studio");
+    }
   }, []);
 
-  async function handleGenerate() {
-    if (!prompt.trim() || isGenerating) return;
+  async function handleGenerate(promptOverride?: string, projectOverride?: string) {
+    const effectivePrompt = (promptOverride ?? prompt).trim();
+    const effectiveProject = projectOverride ?? selectedProject;
+    if (!effectivePrompt) return;
+
+    // Limit simultaneous generations.
+    if (activeCount >= MAX_CONCURRENT) return;
 
     // Free daily limit (only when FREE_LIMIT_ON).
     if (FREE_LIMIT_ON && usedToday >= FREE_LIMIT) {
@@ -165,21 +254,48 @@ export default function StudioPage() {
     }
 
     const baseImage = editBase; // capture current edit target
-    const id = `gen_${Date.now()}`;
+    const projMeta =
+      PROJECTS.find((p) => p.id === effectiveProject) ?? PROJECTS[0];
+    const id = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newResult: GenerationResult = {
       id,
-      prompt: prompt.trim(),
+      prompt: effectivePrompt,
       style: selectedStyle !== "default" ? selectedStyle : undefined,
       count: imageCount,
       images: [],
       loading: true,
+      projectIcon: projMeta.img,
+      projectName: projMeta.active ? projMeta.name : projMeta.id,
       timestamp: Date.now(),
     };
 
-    setResults((prev) => [...prev, newResult]);
+    // Show the loading card only if the user is currently viewing that room.
+    setResults((prev) =>
+      effectiveProject === selectedProject ? [...prev, newResult] : prev,
+    );
     setPrompt("");
-    setEditBase(null); // consume the edit target
-    setIsGenerating(true);
+    setEditBase(null);
+    setActiveCount((n) => n + 1);
+
+    // Helper: write a finished/failed result into the correct room's storage,
+    // and update the on-screen list only if that room is currently visible.
+    const finalize = (patch: Partial<GenerationResult>) => {
+      // Persist to the room: load fresh, replace/append this result, save.
+      const room = loadRoom(effectiveProject).filter((r) => r.id !== id);
+      const finished = { ...newResult, ...patch, loading: false };
+      saveRoom(effectiveProject, [...room, finished]);
+
+      // Update screen if viewing this room.
+      setResults((prev) => {
+        const isViewing = currentRoomRef.current === effectiveProject;
+        if (!isViewing) return prev;
+        const exists = prev.some((r) => r.id === id);
+        if (exists) {
+          return prev.map((r) => (r.id === id ? finished : r));
+        }
+        return [...prev, finished];
+      });
+    };
 
     try {
       const response = await fetch("/api/generate", {
@@ -189,7 +305,7 @@ export default function StudioPage() {
           prompt: newResult.prompt,
           style: newResult.style,
           count: imageCount,
-          project: selectedProject,
+          project: effectiveProject,
           baseImage: baseImage || undefined,
         }),
       });
@@ -197,13 +313,8 @@ export default function StudioPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Generation failed");
 
-      setResults((prev) =>
-        prev.map((r) =>
-          r.id === id ? { ...r, images: data.images, loading: false } : r,
-        ),
-      );
+      finalize({ images: data.images });
 
-      // Count this generation toward the free daily limit.
       if (FREE_LIMIT_ON) {
         const next = readUsage() + 1;
         writeUsage(next);
@@ -211,13 +322,9 @@ export default function StudioPage() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      setResults((prev) =>
-        prev.map((r) =>
-          r.id === id ? { ...r, loading: false, error: message } : r,
-        ),
-      );
+      finalize({ error: message });
     } finally {
-      setIsGenerating(false);
+      setActiveCount((n) => Math.max(0, n - 1));
     }
   }
 
@@ -520,7 +627,26 @@ export default function StudioPage() {
               Create unique APEPE images with AI
             </p>
           </div>
-          <div className="w-8 md:w-0" />
+          {results.length > 0 ? (
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Clear all images in this room? This cannot be undone.",
+                  )
+                ) {
+                  clearRoom(selectedProject);
+                  setResults([]);
+                }
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-400 transition hover:border-red-500/40 hover:text-red-400"
+            >
+              <Trash2 size={14} />
+              <span className="hidden sm:inline">Clear</span>
+            </button>
+          ) : (
+            <div className="w-8 md:w-0" />
+          )}
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-8">
@@ -646,18 +772,22 @@ export default function StudioPage() {
                   }
                 }}
                 placeholder="Describe your meme..."
-                disabled={isGenerating}
                 className="flex-1 bg-transparent px-2 text-base text-zinc-100 placeholder:text-zinc-600 focus:outline-none disabled:opacity-50 sm:px-3"
               />
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-500">
                 <ImageIcon size={20} />
               </div>
               <button
-                onClick={handleGenerate}
-                disabled={!prompt.trim() || isGenerating}
+                onClick={() => handleGenerate()}
+                disabled={!prompt.trim() || activeCount >= MAX_CONCURRENT}
+                title={
+                  activeCount >= MAX_CONCURRENT
+                    ? "Up to 3 generations at once"
+                    : undefined
+                }
                 className="btn-glow flex shrink-0 items-center gap-2 rounded-xl bg-brand px-5 py-3 text-base font-semibold text-black transition hover:bg-brand-bright disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500 sm:px-6"
               >
-                {isGenerating ? (
+                {activeCount > 0 ? (
                   <Loader2 size={17} className="animate-spin" />
                 ) : (
                   <Sparkles size={17} />
@@ -876,13 +1006,17 @@ function ResultCard({
       </div>
 
       <div className="flex items-start gap-3.5 rounded-2xl border border-white/5 bg-white/[0.02] p-4 sm:p-5">
-        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full ring-1 ring-brand/40">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/apepe-icon.png"
-            alt="APEPE"
-            className="h-full w-full object-cover"
-          />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-brand/40">
+          {result.projectIcon ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={result.projectIcon}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="text-xs font-semibold text-zinc-500">?</span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between">
