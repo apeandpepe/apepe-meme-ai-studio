@@ -37,29 +37,47 @@ const STYLE_ENHANCERS: Record<string, string> = {
   anime: "anime style with cel-shading and vibrant colors",
 };
 
-async function translatePrompt(userPrompt: string): Promise<string> {
-  const hasNonAscii = /[^\x00-\x7F]/.test(userPrompt);
-  if (!hasNonAscii) return userPrompt;
+/**
+ * Expand a short user request into a detailed, structured English prompt
+ * (expression, concept, pose, angle, background, outfit, extras) so the LoRA
+ * produces rich, well-composed results from minimal input. Also translates
+ * Korean to English. Character appearance is intentionally NOT described —
+ * the LoRA owns APEPE's identity, and describing it fights the LoRA.
+ */
+async function expandPrompt(userPrompt: string): Promise<string> {
+  const instruction = [
+    "APEPE is a specific stylized character: a green creature (NOT a human), with a signature look — it always wears something on its head, and has distinctive sharp eyes. This identity is FIXED and rendered automatically.",
+    "Your job: take a short request and write ONE prompt describing the SCENE for this APEPE character — its concept, outfit, pose, camera angle, background, lighting/mood.",
+    "Rules:",
+    "- NEVER turn APEPE into a human or realistic person. It is always this green creature character.",
+    "- NEVER remove the head covering — APEPE always wears headwear that fits the scene (hat, helmet, crown, cap, hood...).",
+    "- Do NOT describe its eyes, face, skin, body, gender, or species directly (those are rendered automatically) — and never contradict them.",
+    "- Keep APEPE the clear main subject of the scene.",
+    "- Default to a fierce, confident mood unless the request implies another (cute, sad, happy...).",
+    "- Camera angle: default front-facing, but use a fitting angle when the scene calls for it. Lighting: match the scene.",
+    "- Keep it SHORT: one line, ~20-30 words, comma-separated phrases. NO full sentences, no narration like 'The scene is...'.",
+    "- Keep detail moderate — no busy props, tattoos, logos, or clutter.",
+    "- If the request is unusual/abstract, interpret it into a natural visual scene.",
+    "- No text or writing in the image.",
+    "- Output ONLY the prompt, starting with 'apepe', comma-separated, English. No labels, no quotes.",
+    "",
+    `Request: ${userPrompt}`,
+  ].join("\n");
 
   try {
     const model = genAI.getGenerativeModel({ model: TRANSLATE_MODEL_ID });
-    const result = await model.generateContent(
-      [
-        "Translate the following image-generation request into concise, natural English suitable for an AI image generator.",
-        "Only output the English translation. No quotes, no explanation, no extra words.",
-        "Keep the word APEPE unchanged if present.",
-        "",
-        `Request: ${userPrompt}`,
-      ].join("\n"),
-    );
+    const result = await model.generateContent(instruction);
     const text = result?.response?.text?.();
     if (text && text.trim().length > 0) {
-      const cleaned = text.trim().replace(/^["']|["']$/g, "");
-      console.log(`[fal] Translated "${userPrompt}" -> "${cleaned}"`);
+      const cleaned = text
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .replace(/\n/g, " ");
+      console.log(`[inference] Expanded "${userPrompt}" -> "${cleaned}"`);
       return cleaned;
     }
   } catch (err) {
-    console.warn("[fal] Translation failed, using original:", err);
+    console.warn("[inference] Expansion failed, using original:", err);
   }
   return userPrompt;
 }
@@ -69,24 +87,21 @@ async function translatePrompt(userPrompt: string): Promise<string> {
  * The trigger word goes first so the LoRA's learned APEPE identity is applied,
  * then the user's (translated) scene description.
  */
-function buildPrompt(translated: string, style?: string): { prompt: string; negative: string } {
-  // Strip a leading "apepe" to avoid duplication with the trigger word.
-  const scene = translated.trim().replace(/^apepe[\s,]+/i, "").trim();
+function buildPrompt(expanded: string, style?: string): { prompt: string; negative: string } {
+  const scene = expanded.trim().replace(/^apepe[\s,]+/i, "").trim();
 
   const wantsCute = /\b(cute|adorable|chibi|kawaii|귀여|깜찍)\b/i.test(scene);
 
   const styleSuffix =
     style && STYLE_ENHANCERS[style] ? `, ${STYLE_ENHANCERS[style]}` : "";
 
-  // Fierce look applied to the FACE only (no "strong" — that makes a buff body).
-  const vibe = wantsCute ? "" : ", fierce determined face, sharp eyes";
+  // Expansion already added mood, headwear, scene detail, and "no text".
+  // Here we just prepend the trigger word and add a light safety net.
+  const prompt = `${TRIGGER_WORD}, ${scene}${styleSuffix}, ${TRIGGER_WORD} character, green creature, no text, square image`;
 
-  const prompt = `${TRIGGER_WORD}, ${scene}${vibe}, wearing headwear${styleSuffix}, clean, no text, square image`;
-
-  // Short negative — no body-related words (those broke proportions before).
   const negative = wantsCute
-    ? "text, watermark, signature, frog, pepe the frog, two heads, extra character, low quality"
-    : "text, watermark, signature, frog, pepe the frog, cute, chibi, two heads, extra character, low quality";
+    ? "text, watermark, signature, frog, pepe the frog, two heads, extra character, low quality, split face, facial seam, vertical line on face, mirrored face"
+    : "text, watermark, signature, frog, pepe the frog, cute, chibi, two heads, extra character, low quality, split face, facial seam, vertical line on face, mirrored face";
 
   return { prompt, negative };
 }
@@ -113,7 +128,7 @@ async function generateSingle(
         num_images: 1,
         enable_safety_checker: true,
         output_format: "png",
-      },
+      } as Record<string, unknown>,
     });
 
     // Result shape: { data: { images: [{ url, ... }] } } (client wraps in .data)
@@ -145,11 +160,11 @@ export async function generateImages({
   style,
   count,
 }: GenerateParams): Promise<{ images: string[] }> {
-  const translated = await translatePrompt(prompt);
-  const { prompt: finalPrompt, negative } = buildPrompt(translated, style);
+  const expanded = await expandPrompt(prompt);
+  const { prompt: finalPrompt, negative } = buildPrompt(expanded, style);
 
   console.log(
-    `[fal] LoRA gen | count: ${count} | scale: ${LORA_SCALE} | prompt: "${finalPrompt}"`,
+    `[inference] gen | count: ${count} | scale: ${LORA_SCALE} | prompt: "${finalPrompt}"`,
   );
 
   const images: string[] = [];
