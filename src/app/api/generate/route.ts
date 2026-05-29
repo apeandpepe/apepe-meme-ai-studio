@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateImages } from "@/lib/nano-banana";
-import { getReferences, getApepeReferencesByExpression } from "@/lib/references";
+import { generateImages as generateNano } from "@/lib/nano-banana";
+import { generateImages as generateFalLora } from "@/lib/fal-generate";
+import { getReferences } from "@/lib/references";
 import { addWatermarks } from "@/lib/watermark";
 import { isProjectEnabled } from "@/lib/config";
 
@@ -85,37 +86,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Load references. For APEPE, pick references based on the expression
-    // detected in the prompt so the drawn expression is reused (not invented).
-    let referenceImages: string[];
+    let result: { images: string[] };
+
     if (project === "apepe") {
+      // APEPE uses the trained fal.ai LoRA. Add the detected expression as a
+      // text hint to the prompt (the LoRA handles identity).
       const expression = detectExpression(prompt);
-      referenceImages = await getApepeReferencesByExpression(expression);
+      const expressionHint = expression ? ` (${expression} expression)` : "";
       if (expression) {
         console.log(`[generate] APEPE expression detected: ${expression}`);
       }
+      result = await generateFalLora({
+        prompt: prompt + expressionHint,
+        style,
+        count: safeCount,
+      });
     } else {
-      referenceImages = await getReferences(project);
+      // Other coins: nano-banana with their reference folder.
+      const referenceImages = await getReferences(project);
+      if (referenceImages.length === 0) {
+        return NextResponse.json(
+          { error: "No reference images available for this project yet." },
+          { status: 400 },
+        );
+      }
+      result = await generateNano({
+        prompt,
+        style,
+        referenceImages,
+        count: safeCount,
+        project,
+        baseImage:
+          typeof baseImage === "string" && baseImage.startsWith("data:")
+            ? baseImage
+            : undefined,
+      });
     }
-
-    if (referenceImages.length === 0) {
-      return NextResponse.json(
-        { error: "No reference images available for this project yet." },
-        { status: 400 },
-      );
-    }
-
-    const result = await generateImages({
-      prompt,
-      style,
-      referenceImages,
-      count: safeCount,
-      project,
-      baseImage:
-        typeof baseImage === "string" && baseImage.startsWith("data:")
-          ? baseImage
-          : undefined,
-    });
 
     // Add APEPE AI watermark to all generated images
     const watermarked = await addWatermarks(result.images);
