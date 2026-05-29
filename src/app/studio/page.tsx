@@ -366,13 +366,22 @@ export default function StudioPage() {
               />
             </div>
             <div className="hidden sm:block">
-              <p className="font-display text-base font-bold leading-tight">
-                Meme <span className="text-brand">AI</span> Studio
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="font-display text-base font-bold leading-tight">
+                  Meme <span className="text-brand">AI</span> Studio
+                </p>
+                <span className="rounded border border-brand px-1.5 py-[1px] text-[9px] font-medium tracking-wider text-brand">
+                  BETA
+                </span>
+              </div>
               <p className="text-[10px] text-zinc-500">
                 Powered by <span className="text-brand">APEPE</span>
               </p>
             </div>
+            {/* Mobile: just the BETA badge next to the logo icon */}
+            <span className="rounded border border-brand px-1.5 py-[1px] text-[9px] font-medium tracking-wider text-brand sm:hidden">
+              BETA
+            </span>
           </Link>
 
           {/* Mode tabs */}
