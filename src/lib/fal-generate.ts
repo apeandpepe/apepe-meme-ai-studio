@@ -128,7 +128,7 @@ async function generateSingle(
         num_images: 1,
         enable_safety_checker: true,
         output_format: "png",
-      } as Record<string, unknown>,
+      } as any,
     });
 
     // Result shape: { data: { images: [{ url, ... }] } } (client wraps in .data)
