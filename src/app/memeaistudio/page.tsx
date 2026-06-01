@@ -106,7 +106,7 @@ export default function HomePage() {
             <img
               src="/hero-characters.png"
               alt="APEPE characters"
-              className="animate-fade-in relative h-[92%] w-auto max-w-none -translate-x-32 object-contain object-right xl:-translate-x-48"
+              className="animate-fade-in relative h-[92%] w-auto max-w-none -translate-x-16 object-contain object-right xl:-translate-x-24"
             />
           </div>
 
