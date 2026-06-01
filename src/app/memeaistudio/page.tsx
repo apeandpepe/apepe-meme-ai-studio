@@ -97,16 +97,16 @@ export default function HomePage() {
       {/* Hero (flex-1 to fill, content centered) */}
       <section className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-6 sm:px-10">
         <div className="relative flex flex-1 items-center pt-2 lg:pt-6">
-          {/* Right: character group */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[52%] items-center justify-end lg:flex xl:w-[55%]">
+          {/* Right: character group — right half, slightly overlapping headline edge */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[55%] items-center justify-end lg:flex">
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-[420px] w-[420px] rounded-full bg-brand/[0.10] blur-3xl" />
+              <div className="h-[480px] w-[480px] rounded-full bg-brand/[0.12] blur-3xl" />
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/hero-characters.png"
               alt="APEPE characters"
-              className="animate-fade-in relative h-[88%] w-auto max-w-none -translate-x-4 object-contain object-right xl:-translate-x-12"
+              className="animate-fade-in relative h-[92%] w-auto max-w-none object-contain object-right"
             />
           </div>
 
