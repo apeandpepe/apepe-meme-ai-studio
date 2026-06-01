@@ -97,7 +97,7 @@ export default function HomePage() {
       {/* Hero (flex-1 to fill, content centered) */}
       <section className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-6 sm:px-10">
         <div className="relative flex flex-1 items-center pt-2 lg:pt-6">
-          {/* Right: character group — right half, slightly overlapping headline edge */}
+          {/* Right: character group — overlaps with headline text */}
           <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[55%] items-center justify-end lg:flex">
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="h-[480px] w-[480px] rounded-full bg-brand/[0.12] blur-3xl" />
@@ -106,12 +106,12 @@ export default function HomePage() {
             <img
               src="/hero-characters.png"
               alt="APEPE characters"
-              className="animate-fade-in relative h-[92%] w-auto max-w-none object-contain object-right"
+              className="animate-fade-in relative h-[92%] w-auto max-w-none -translate-x-32 object-contain object-right xl:-translate-x-48"
             />
           </div>
 
           {/* Left: copy + input */}
-          <div className="relative z-20 w-full">
+          <div className="relative z-20 w-full lg:pl-20 xl:pl-32">
             <h2 className="font-display text-[2.2rem] font-extrabold leading-[1.1] tracking-[-0.02em] sm:text-5xl lg:text-[3.5rem] lg:leading-[1.07]">
               <span className="block whitespace-nowrap">Generate Official</span>
               <span className="block whitespace-nowrap">Meme Characters</span>
