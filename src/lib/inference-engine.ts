@@ -1,33 +1,39 @@
 import { fal } from "@fal-ai/client";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// fal.ai handles image generation via the trained APEPE LoRA.
-// Translation still uses Gemini (cheap, and the key is already configured).
+// APEPE Inference Engine
+// ----------------------
+// Core image generation pipeline for the APEPE character. The engine expands
+// short user requests into rich scene descriptions, then runs them through the
+// dedicated APEPE model on our inference backend. The backend call is isolated
+// in callInferenceBackend() so it can be swapped without touching the pipeline.
+// Prompt expansion uses Gemini (lightweight, already configured for translation).
 
-const falKey = process.env.FAL_KEY;
-if (!falKey) {
-  console.warn("[fal] FAL_KEY is not set. Image generation will fail.");
+const backendKey = process.env.APEPE_BACKEND_KEY;
+if (!backendKey) {
+  console.warn("[apepe-engine] APEPE_BACKEND_KEY is not set. Image generation will fail.");
 }
-fal.config({ credentials: falKey ?? "" });
+fal.config({ credentials: backendKey ?? "" });
 
-// The trained APEPE LoRA (from fal.ai training) and its trigger word.
-const APEPE_LORA_URL =
-  process.env.APEPE_LORA_URL ??
+// APEPE model and its trigger token. The trigger word activates the trained
+// character identity inside the model.
+const APEPE_MODEL_URL =
+  process.env.APEPE_MODEL_URL ??
   "https://v3b.fal.media/files/b/0a9bfe7a/P6xFPeXoDXv7pbQ3zGY5T_pytorch_lora_weights.safetensors";
 const TRIGGER_WORD = "apepe";
-const FLUX_LORA_ENDPOINT = "fal-ai/flux-lora";
+const INFERENCE_ENDPOINT = "fal-ai/flux-lora";
 
-// LoRA strength. Lower = more freedom for the scene/outfit, higher = stronger
+// Model strength. Lower = more freedom for the scene/outfit, higher = stronger
 // APEPE identity (face shape, proportions). 0.8-0.9 holds the face better;
 // too low lets the base model drift. Tunable via env.
-const LORA_SCALE = process.env.APEPE_LORA_SCALE
-  ? parseFloat(process.env.APEPE_LORA_SCALE)
+const MODEL_STRENGTH = process.env.APEPE_MODEL_STRENGTH
+  ? parseFloat(process.env.APEPE_MODEL_STRENGTH)
   : 0.85;
 
-// Gemini is only used to translate non-English prompts to English.
+// Gemini is used to expand and translate short prompts into rich scene specs.
 const googleKey = process.env.GOOGLE_AI_API_KEY;
 const genAI = new GoogleGenerativeAI(googleKey ?? "");
-const TRANSLATE_MODEL_ID = "gemini-2.5-flash-lite";
+const EXPANSION_MODEL_ID = "gemini-2.5-flash-lite";
 
 const STYLE_ENHANCERS: Record<string, string> = {
   cyberpunk: "cyberpunk neon city aesthetic with futuristic accessories",
@@ -39,10 +45,10 @@ const STYLE_ENHANCERS: Record<string, string> = {
 
 /**
  * Expand a short user request into a detailed, structured English prompt
- * (expression, concept, pose, angle, background, outfit, extras) so the LoRA
+ * (expression, concept, pose, angle, background, outfit, extras) so the model
  * produces rich, well-composed results from minimal input. Also translates
  * Korean to English. Character appearance is intentionally NOT described —
- * the LoRA owns APEPE's identity, and describing it fights the LoRA.
+ * the model owns APEPE's identity, and describing it fights the trained look.
  */
 async function expandPrompt(userPrompt: string): Promise<string> {
   const instruction = [
@@ -65,7 +71,7 @@ async function expandPrompt(userPrompt: string): Promise<string> {
   ].join("\n");
 
   try {
-    const model = genAI.getGenerativeModel({ model: TRANSLATE_MODEL_ID });
+    const model = genAI.getGenerativeModel({ model: EXPANSION_MODEL_ID });
     const result = await model.generateContent(instruction);
     const text = result?.response?.text?.();
     if (text && text.trim().length > 0) {
@@ -73,19 +79,19 @@ async function expandPrompt(userPrompt: string): Promise<string> {
         .trim()
         .replace(/^["']|["']$/g, "")
         .replace(/\n/g, " ");
-      console.log(`[inference] Expanded "${userPrompt}" -> "${cleaned}"`);
+      console.log(`[apepe-engine] Expanded "${userPrompt}" -> "${cleaned}"`);
       return cleaned;
     }
   } catch (err) {
-    console.warn("[inference] Expansion failed, using original:", err);
+    console.warn("[apepe-engine] Expansion failed, using original:", err);
   }
   return userPrompt;
 }
 
 /**
- * Build the final prompt for the LoRA.
- * The trigger word goes first so the LoRA's learned APEPE identity is applied,
- * then the user's (translated) scene description.
+ * Build the final prompt for the model.
+ * The trigger word goes first so the model's learned APEPE identity is applied,
+ * then the (expanded) scene description.
  */
 function buildPrompt(expanded: string, style?: string): { prompt: string; negative: string } {
   const scene = expanded.trim().replace(/^apepe[\s,]+/i, "").trim();
@@ -106,51 +112,64 @@ function buildPrompt(expanded: string, style?: string): { prompt: string; negati
   return { prompt, negative };
 }
 
+/**
+ * Single call into the inference backend. Isolated so we can swap the backend
+ * (e.g., to a self-hosted GPU cluster) without changing the rest of the engine.
+ */
+async function callInferenceBackend(
+  prompt: string,
+  negative: string,
+): Promise<string | null> {
+  const result = await fal.subscribe(INFERENCE_ENDPOINT, {
+    input: {
+      prompt,
+      negative_prompt: negative,
+      loras: [{ path: APEPE_MODEL_URL, scale: MODEL_STRENGTH }],
+      image_size: "square_hd", // 1024x1024
+      num_inference_steps: 30,
+      guidance_scale: 4,
+      num_images: 1,
+      enable_safety_checker: true,
+      output_format: "png",
+    } as any,
+  });
+
+  // Result shape: { data: { images: [{ url, ... }] } } (client wraps in .data)
+  const data = (result as { data?: { images?: Array<{ url?: string }> } })
+    .data;
+  return data?.images?.[0]?.url ?? null;
+}
+
 type GenerateParams = {
   prompt: string;
   style?: string;
   count: number;
 };
 
+/**
+ * Run one full generation: call the backend, download, return as data URL so
+ * the rest of the pipeline (watermark, client display) is backend-agnostic.
+ */
 async function generateSingle(
   prompt: string,
   negative: string,
 ): Promise<string | null> {
   try {
-    const result = await fal.subscribe(FLUX_LORA_ENDPOINT, {
-      input: {
-        prompt,
-        negative_prompt: negative,
-        loras: [{ path: APEPE_LORA_URL, scale: LORA_SCALE }],
-        image_size: "square_hd", // 1024x1024
-        num_inference_steps: 30,
-        guidance_scale: 4,
-        num_images: 1,
-        enable_safety_checker: true,
-        output_format: "png",
-      } as any,
-    });
-
-    // Result shape: { data: { images: [{ url, ... }] } } (client wraps in .data)
-    const data = (result as { data?: { images?: Array<{ url?: string }> } })
-      .data;
-    const url = data?.images?.[0]?.url;
+    const url = await callInferenceBackend(prompt, negative);
     if (!url) {
-      console.error("[fal] No image URL in response");
+      console.error("[apepe-engine] No image URL in response");
       return null;
     }
 
-    // Download the image and return as a base64 data URL (so the rest of the
-    // pipeline — watermark, client display — works exactly like before).
     const imgRes = await fetch(url);
     if (!imgRes.ok) {
-      console.error(`[fal] Failed to download image: ${imgRes.status}`);
+      console.error(`[apepe-engine] Failed to download image: ${imgRes.status}`);
       return null;
     }
     const buf = Buffer.from(await imgRes.arrayBuffer());
     return `data:image/png;base64,${buf.toString("base64")}`;
   } catch (err) {
-    console.error("[fal] generateSingle error:", err);
+    console.error("[apepe-engine] generateSingle error:", err);
     return null;
   }
 }
@@ -164,7 +183,7 @@ export async function generateImages({
   const { prompt: finalPrompt, negative } = buildPrompt(expanded, style);
 
   console.log(
-    `[inference] gen | count: ${count} | scale: ${LORA_SCALE} | prompt: "${finalPrompt}"`,
+    `[apepe-engine] gen | count: ${count} | strength: ${MODEL_STRENGTH} | prompt: "${finalPrompt}"`,
   );
 
   const images: string[] = [];
@@ -182,13 +201,13 @@ export async function generateImages({
     for (const r of settled) {
       if (r.status === "fulfilled" && r.value) images.push(r.value);
       else if (r.status === "rejected")
-        console.error("[fal] image rejected:", r.reason);
+        console.error("[apepe-engine] image rejected:", r.reason);
     }
 
     if (images.length >= count) break;
     if (round < MAX_ROUNDS - 1) {
       console.warn(
-        `[fal] Got ${images.length}/${count}, retrying ${count - images.length} more...`,
+        `[apepe-engine] Got ${images.length}/${count}, retrying ${count - images.length} more...`,
       );
     }
   }
@@ -197,6 +216,6 @@ export async function generateImages({
     throw new Error("All image generations failed. Check server logs.");
   }
 
-  console.log(`[fal] Successfully generated ${images.length}/${count} images`);
+  console.log(`[apepe-engine] Successfully generated ${images.length}/${count} images`);
   return { images };
 }

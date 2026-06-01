@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateImages as generateNano } from "@/lib/nano-banana";
-import { generateImages as generateFalLora } from "@/lib/fal-generate";
+import { generateImages as generateApepeImage } from "@/lib/inference-engine";
 import { getReferences } from "@/lib/references";
 import { addWatermarks } from "@/lib/watermark";
 import { isProjectEnabled } from "@/lib/config";
@@ -89,14 +89,14 @@ export async function POST(req: NextRequest) {
     let result: { images: string[] };
 
     if (project === "apepe") {
-      // APEPE uses the trained fal.ai LoRA. Add the detected expression as a
-      // text hint to the prompt (the LoRA handles identity).
+      // APEPE goes through the dedicated APEPE inference engine. The detected
+      // expression is added as a text hint; identity is handled by the engine.
       const expression = detectExpression(prompt);
       const expressionHint = expression ? ` (${expression} expression)` : "";
       if (expression) {
         console.log(`[generate] APEPE expression detected: ${expression}`);
       }
-      result = await generateFalLora({
+      result = await generateApepeImage({
         prompt: prompt + expressionHint,
         style,
         count: safeCount,
