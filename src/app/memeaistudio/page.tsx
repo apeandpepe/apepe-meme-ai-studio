@@ -98,7 +98,7 @@ export default function HomePage() {
       <section className="relative z-10 mx-auto flex w-full max-w-[1400px] flex-1 flex-col px-6 sm:px-10">
         <div className="relative flex flex-1 items-center pt-2 lg:pt-6">
           {/* Right: character group */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[46%] items-center justify-end lg:flex">
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[52%] items-center justify-end lg:flex xl:w-[55%]">
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="h-[420px] w-[420px] rounded-full bg-brand/[0.10] blur-3xl" />
             </div>
@@ -106,7 +106,7 @@ export default function HomePage() {
             <img
               src="/hero-characters.png"
               alt="APEPE characters"
-              className="animate-fade-in relative h-[84%] w-auto max-w-none translate-x-8 object-contain object-right"
+              className="animate-fade-in relative h-[88%] w-auto max-w-none -translate-x-4 object-contain object-right xl:-translate-x-12"
             />
           </div>
 
@@ -134,13 +134,13 @@ export default function HomePage() {
 
             {/* Input bar */}
             <div className="mt-10 w-full max-w-[780px]">
-              <div className="card-border flex items-center gap-3 rounded-2xl bg-[rgb(var(--bg-card))] p-3 transition focus-within:border-brand/30">
+              <div className="card-border flex flex-col gap-2 rounded-2xl bg-[rgb(var(--bg-card))] p-3 transition focus-within:border-brand/30 sm:flex-row sm:items-center sm:gap-3">
                 {/* Character dropdown */}
-                <div className="relative shrink-0">
+                <div className="relative w-full shrink-0 sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setDropdownOpen((v) => !v)}
-                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 transition hover:bg-white/[0.06]"
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 transition hover:bg-white/[0.06] sm:w-auto sm:justify-start"
                   >
                     <div className="h-7 w-7 overflow-hidden rounded-full ring-1 ring-brand/30">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -201,7 +201,7 @@ export default function HomePage() {
                 <button
                   type="button"
                   onClick={go}
-                  className="btn-glow flex shrink-0 items-center gap-2 rounded-xl bg-brand px-6 py-3.5 text-base font-bold text-black transition hover:bg-brand-bright"
+                  className="btn-glow flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3.5 text-base font-bold text-black transition hover:bg-brand-bright sm:w-auto"
                 >
                   <Sparkles size={17} />
                   Generate

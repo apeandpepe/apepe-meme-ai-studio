@@ -352,10 +352,10 @@ export default function StudioPage() {
   const activeStyle = STYLE_PRESETS.find((s) => s.id === selectedStyle);
 
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-[rgb(var(--bg-primary))]">
+    <div className="flex h-dvh w-full flex-col overflow-hidden overflow-x-hidden bg-[rgb(var(--bg-primary))]">
       {/* Top full-width header */}
-      <header className="z-30 flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-5">
+      <header className="z-30 flex shrink-0 items-center justify-between gap-2 border-b border-white/5 px-3 py-3 sm:gap-5 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-5">
           <Link href="/memeaistudio" className="flex items-center gap-2.5">
             <div className="h-9 w-9 overflow-hidden rounded-full ring-1 ring-brand/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -385,10 +385,10 @@ export default function StudioPage() {
           </Link>
 
           {/* Mode tabs */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
             <button
               onClick={() => setActiveMode("image")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition ${
+              className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-sm transition sm:gap-1.5 sm:px-3 ${
                 activeMode === "image"
                   ? "bg-brand text-black"
                   : "text-zinc-300 hover:bg-white/5"
@@ -399,7 +399,7 @@ export default function StudioPage() {
             </button>
             <button
               disabled
-              className="flex cursor-not-allowed items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-600"
+              className="flex cursor-not-allowed items-center gap-1 rounded-lg px-2.5 py-2 text-sm text-zinc-600 sm:gap-1.5 sm:px-3"
             >
               <UserCircle size={15} />
               <span className="font-medium">PFP</span>
@@ -407,7 +407,7 @@ export default function StudioPage() {
             </button>
             <button
               disabled
-              className="flex cursor-not-allowed items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-zinc-600"
+              className="flex cursor-not-allowed items-center gap-1 rounded-lg px-2.5 py-2 text-sm text-zinc-600 sm:gap-1.5 sm:px-3"
             >
               <Video size={15} />
               <span className="font-medium">Video</span>
@@ -416,12 +416,12 @@ export default function StudioPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <a
             href="https://apepe.lol"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-xl border border-white/12 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/30 hover:text-white"
+            className="hidden rounded-xl border border-white/12 px-4 py-2 text-sm text-zinc-200 transition hover:border-white/30 hover:text-white sm:block"
           >
             About
           </a>
