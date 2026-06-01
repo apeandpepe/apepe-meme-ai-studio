@@ -235,7 +235,7 @@ export default function StudioPage() {
     // Clean the URL so the prompt isn't shown in the address bar and a
     // refresh doesn't auto-generate again.
     if (p || pr) {
-      window.history.replaceState(null, "", "/memestudio/studio");
+      window.history.replaceState(null, "", "/memeaistudio/studio");
     }
   }, []);
 
@@ -356,7 +356,7 @@ export default function StudioPage() {
       {/* Top full-width header */}
       <header className="z-30 flex shrink-0 items-center justify-between border-b border-white/5 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-5">
-          <Link href="/memestudio" className="flex items-center gap-2.5">
+          <Link href="/memeaistudio" className="flex items-center gap-2.5">
             <div className="h-9 w-9 overflow-hidden rounded-full ring-1 ring-brand/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -455,7 +455,7 @@ export default function StudioPage() {
       >
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-white/5 px-4 py-4">
-            <Link href="/memestudio" className="flex items-center gap-2">
+            <Link href="/memeaistudio" className="flex items-center gap-2">
               <ArrowLeft size={16} className="text-zinc-400" />
               <span className="text-sm font-medium">
                 <span className="text-brand">APEPE</span> Studio

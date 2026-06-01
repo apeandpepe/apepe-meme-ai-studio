@@ -39,7 +39,7 @@ export default function HomePage() {
     const params = new URLSearchParams();
     params.set("project", selected);
     if (prompt.trim()) params.set("prompt", prompt.trim());
-    router.push(`/memestudio/studio?${params.toString()}`);
+    router.push(`/memeaistudio/studio?${params.toString()}`);
   }
 
   return (
@@ -51,7 +51,7 @@ export default function HomePage() {
       {/* Header */}
       <header className="relative z-10 shrink-0">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4 sm:px-10">
-          <Link href="/memestudio" className="flex items-center gap-3">
+          <Link href="/memeaistudio" className="flex items-center gap-3">
             <div className="relative h-11 w-11 overflow-hidden rounded-full ring-1 ring-brand/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -290,7 +290,7 @@ export default function HomePage() {
               } ${selectable ? "hover:border-brand/40 hover:bg-white/[0.04]" : ""}`;
 
               return selectable ? (
-                <Link key={slot.id} href={`/memestudio/studio?project=${slot.id}`} className={className}>
+                <Link key={slot.id} href={`/memeaistudio/studio?project=${slot.id}`} className={className}>
                   {inner}
                 </Link>
               ) : (
