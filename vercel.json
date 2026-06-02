@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/communityflow",
+      "destination": "https://apepe-communityflow.vercel.app/"
+    },
+    {
+      "source": "/communityflow/:path*",
+      "destination": "https://apepe-communityflow.vercel.app/:path*"
+    }
+  ]
+}
