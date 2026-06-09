@@ -8,5 +8,10 @@
       "source": "/communityflow/:path*",
       "destination": "https://apepe-communityflow.vercel.app/:path*"
     }
+  ],
+  "redirects": [
+    { "source": "/form", "destination": "/communityflow/form", "permanent": false },
+    { "source": "/vote", "destination": "/communityflow/vote", "permanent": false },
+    { "source": "/result", "destination": "/communityflow/result", "permanent": false }
   ]
 }
